@@ -66,15 +66,12 @@ class BriefingAgent:
         )
 
         try:
-            # Step 1: Analyze and categorize data
-            self.logger.info("Step 1: Analyzing data...")
+            # Analyze and create briefing sections
+            self.logger.info("Analyzing data and creating briefing sections...")
             sections = await self._analyze_and_create_sections(collected_data, target_date)
             briefing.sections = sections
 
-            # Step 2: Generate executive summary
-            self.logger.info("Step 2: Generating summary...")
-            summary = await self._generate_summary(collected_data, sections, target_date)
-            briefing.summary = summary
+            # No executive summary - Critical Items and Action Items sections replace it
 
             # Mark as completed
             briefing.status = BriefingStatus.COMPLETED
@@ -105,19 +102,50 @@ class BriefingAgent:
 
         sections = []
 
-        # Create sections for different data types
-        if collected_data.emails:
-            email_section = await self._create_email_section(collected_data.emails, target_date)
-            if email_section:
-                sections.append(email_section)
+        # NEW SECTIONS - Priority 1-6
 
+        # 1. Critical Items (Priority 1)
+        critical_items_section = await self._create_critical_items_section(collected_data, target_date)
+        if critical_items_section:
+            sections.append(critical_items_section)
+
+        # 2. New Requests (Priority 2)
+        new_requests_section = await self._create_new_requests_section(collected_data, target_date)
+        if new_requests_section:
+            sections.append(new_requests_section)
+
+        # 3. Local Weather (Priority 3)
+        if collected_data.weather:
+            weather_section = await self._create_weather_section(collected_data.weather, target_date)
+            if weather_section:
+                sections.append(weather_section)
+
+        # 4. Competitor News (Priority 4)
+        if collected_data.news_articles:
+            competitor_news_section = await self._create_competitor_news_section(collected_data, target_date)
+            if competitor_news_section:
+                sections.append(competitor_news_section)
+
+        # 5. AI News (Priority 5)
+        if collected_data.news_articles:
+            ai_news_section = await self._create_ai_news_section(collected_data, target_date)
+            if ai_news_section:
+                sections.append(ai_news_section)
+
+        # 6. Agenda (Priority 6)
+        agenda_section = await self._create_agenda_section(collected_data, target_date)
+        if agenda_section:
+            sections.append(agenda_section)
+
+        # 7. Action Items - Calendar Conflicts (Priority 7)
         if collected_data.calendar_events:
-            calendar_section = await self._create_calendar_section(
+            conflicts_section = await self._create_calendar_conflicts_section(
                 collected_data.calendar_events, target_date
             )
-            if calendar_section:
-                sections.append(calendar_section)
+            if conflicts_section:
+                sections.append(conflicts_section)
 
+        # 8. Slack Summary (Priority 8)
         if collected_data.slack_messages:
             slack_section = await self._create_slack_section(
                 collected_data.slack_messages, target_date
@@ -125,10 +153,26 @@ class BriefingAgent:
             if slack_section:
                 sections.append(slack_section)
 
+        # 9. Email Summary (Priority 9)
+        if collected_data.emails:
+            email_section = await self._create_email_section(collected_data.emails, target_date)
+            if email_section:
+                sections.append(email_section)
+
+        # 10. Call Summary (Priority 10)
         if collected_data.gong_calls:
             gong_section = await self._create_gong_section(collected_data.gong_calls, target_date)
             if gong_section:
                 sections.append(gong_section)
+
+        # REMAINING SECTIONS - Keep existing priorities for now
+
+        if collected_data.calendar_events:
+            calendar_section = await self._create_calendar_section(
+                collected_data.calendar_events, target_date
+            )
+            if calendar_section:
+                sections.append(calendar_section)
 
         if collected_data.monday_items:
             monday_section = await self._create_monday_section(
@@ -149,70 +193,78 @@ class BriefingAgent:
             if miro_section:
                 sections.append(miro_section)
 
-        if collected_data.weather:
-            weather_section = await self._create_weather_section(collected_data.weather, target_date)
-            if weather_section:
-                sections.append(weather_section)
-
-        if collected_data.news_articles:
-            news_section = await self._create_news_section(collected_data.news_articles, target_date)
-            if news_section:
-                sections.append(news_section)
-
-        if collected_data.calendar_events:
-            conflicts_section = await self._create_calendar_conflicts_section(
-                collected_data.calendar_events, target_date
-            )
-            if conflicts_section:
-                sections.append(conflicts_section)
-
-        # Sort sections by priority (descending)
+        # Sort sections by priority (descending - higher number = higher priority)
         sections.sort(key=lambda s: s.priority, reverse=True)
 
         return sections
 
     async def _create_email_section(self, emails: List[Any], target_date: date) -> Optional[BriefingSection]:
-        """Create briefing section from emails"""
+        """Create briefing section from emails with focus on meeting invites"""
         if not emails:
             return None
 
-        # Prepare email data for Claude
-        email_summaries = []
+        # Categorize emails
+        meeting_invites = []
+        other_emails = []
+
         for email in emails[:50]:  # Limit to 50 most recent
-            email_summaries.append({
-                "from": f"{email.from_name or email.from_email}",
-                "subject": email.subject,
-                "snippet": email.snippet or email.body[:200],
-                "is_important": email.is_important,
-            })
+            subject_lower = email.subject.lower() if email.subject else ""
 
-        prompt = f"""Analyze these {len(emails)} emails from {target_date} and create a concise briefing section.
+            # Check if it's a meeting invite
+            if any(keyword in subject_lower for keyword in ["invitation:", "invited:", "meeting:", "calendar:"]) or \
+               (hasattr(email, 'is_calendar_invite') and email.is_calendar_invite):
+                meeting_invites.append({
+                    "from": f"{email.from_name or email.from_email}",
+                    "subject": email.subject,
+                    "snippet": email.snippet or email.body[:200],
+                })
+            else:
+                other_emails.append({
+                    "from": f"{email.from_name or email.from_email}",
+                    "subject": email.subject,
+                    "snippet": email.snippet or email.body[:200],
+                    "is_important": email.is_important,
+                })
 
-Focus on:
-- Important communications from customers, partners, or leadership
-- Action items or requests that need attention
-- Key updates or decisions
+        total_emails = len(emails)
 
-Emails:
-{email_summaries}
+        prompt = f"""Summarize email activity from {target_date}. Total emails analyzed: {total_emails}
 
-Return a markdown-formatted section that highlights the most important points."""
+**NEW MEETING INVITES** ({len(meeting_invites)} invitations):
+{meeting_invites if meeting_invites else "None"}
+
+**OTHER KEY EMAILS** ({len(other_emails)} emails):
+{other_emails[:20] if other_emails else "None"}
+
+Format the briefing as:
+
+**New Meeting Invites**:
+- [List each new meeting invite with organizer and meeting topic]
+
+**Other Key Emails**:
+[Brief summary of important non-meeting emails - action items, requests, key updates]
+
+Focus on actionable items. Max 1200 tokens."""
 
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=2000,
+                max_tokens=1200,
                 messages=[{"role": "user", "content": prompt}]
             )
 
             content = response.content[0].text
 
             return BriefingSection(
-                title="Email Highlights",
+                title="Email Summary",
                 content=content,
-                priority=8,
+                priority=9,
                 source_count=1,
-                metadata={"total_emails": len(emails)},
+                metadata={
+                    "total_emails": total_emails,
+                    "meeting_invites": len(meeting_invites),
+                    "other_emails": len(other_emails)
+                },
             )
 
         except Exception as e:
@@ -312,7 +364,9 @@ Return a markdown-formatted section."""
                     "text": msg.text[:150],
                 })
 
-        prompt = f"""Analyze Slack activity from {target_date} with focus on high-priority communications.
+        total_messages = len(messages)
+
+        prompt = f"""Summarize Slack activity from {target_date}. Total messages analyzed: {total_messages}
 
 **UNANSWERED DIRECT MESSAGES** ({len(unanswered_dms)} requiring response):
 {unanswered_dms if unanswered_dms else "None"}
@@ -320,35 +374,35 @@ Return a markdown-formatted section."""
 **MENTIONS** ({len(mentions)} times you were mentioned):
 {mentions if mentions else "None"}
 
-**VIP THREADS** ({len(vip_threads)} high-engagement discussions):
+**THREADS WITH NEW REPLIES** ({len(vip_threads)} active threads):
 {vip_threads if vip_threads else "None"}
 
-**Other Activity** ({len(other_messages)} messages):
-{other_messages[:10] if other_messages else "None"}  # Sample only
+Format the briefing in this structure:
 
-Create a briefing organized by:
-1. **Unanswered DMs** - Messages requiring your response, with context (who, what, when)
-2. **Mentions** - Where you were @mentioned, why it matters
-3. **VIP Threads** - High-engagement discussions you should be aware of
-4. **Key Updates** - Other important team communications
+**Direct Messages**: {len(unanswered_dms)} unanswered
+[Brief summary of who needs responses and about what]
 
-Be concise and actionable. Highlight urgent items first.
+**Mentions**: {len(mentions)} mentions
+[Brief summary of where you were mentioned and why]
 
-Return in markdown format with clear sections."""
+**Active Threads**: {len(vip_threads)} with new replies
+[Brief summary of high-engagement discussions]
+
+Be very concise. Focus only on actionable items. Max 1000 tokens."""
 
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1500,
+                max_tokens=1000,
                 messages=[{"role": "user", "content": prompt}]
             )
 
             content = response.content[0].text
 
             return BriefingSection(
-                title="Team Communications",
+                title="Slack Summary",
                 content=content,
-                priority=6,
+                priority=8,
                 source_count=1,
                 metadata={
                     "total_messages": len(messages),
@@ -363,15 +417,27 @@ Return in markdown format with clear sections."""
             return None
 
     async def _create_gong_section(self, calls: List[Any], target_date: date) -> Optional[BriefingSection]:
-        """Create briefing section from Gong calls with enhanced customer insights"""
+        """Create briefing section from Gong calls with customer type detection"""
         if not calls:
             return None
 
         call_summaries = []
         for call in calls:
+            # Detect customer type from call title
+            title_lower = call.title.lower() if call.title else ""
+            customer_type = "existing"  # Default
+
+            # Check for "new customer" indicators
+            if any(keyword in title_lower for keyword in ["kickoff", "intro", "introduction", "onboarding", "getting started", "initial"]):
+                customer_type = "new"
+            # Check for "existing customer" indicators (more explicit)
+            elif any(keyword in title_lower for keyword in ["sync", "check-in", "follow-up", "follow up", "weekly", "monthly", "quarterly"]):
+                customer_type = "existing"
+
             call_summaries.append({
                 "title": call.title,
                 "customer": call.customer_name or "Unknown",
+                "customer_type": customer_type,
                 "duration": f"{call.duration_minutes} min",
                 "key_topics": call.key_topics,
                 "action_items": call.action_items,
@@ -382,23 +448,30 @@ Return in markdown format with clear sections."""
 
         prompt = f"""Analyze these {len(calls)} customer/prospect calls from {target_date} and extract critical insights.
 
-For each call, identify and summarize:
-1. **Customer Use Case** - What business problem are they trying to solve? What's their goal?
-2. **Pain Points** - What specific challenges or frustrations did they express?
-3. **Competitors Mentioned** - Any competing products or solutions discussed?
-4. **Objections Raised** - Concerns, pushback, or hesitations expressed?
-5. **Next Steps** - Agreed follow-up actions and timeline
+For each call, create a structured summary with:
+1. **Customer Type** - New or Existing (already detected)
+2. **Customer Use Case** - What business problem are they trying to solve?
+3. **Pain Points** - Specific challenges or frustrations expressed
+4. **Competitors Mentioned** - Any competing products or solutions discussed
+5. **Objections Raised** - Concerns, pushback, or hesitations
+6. **Next Steps** - Agreed follow-up actions and timeline
 
-Calls Data (with Gong's AI-extracted topics):
+Calls Data (with Gong's AI-extracted topics and detected customer type):
 {call_summaries}
 
-IMPORTANT: Rely primarily on the key_topics field which contains Gong's AI extraction. This already includes competitor mentions, objections, and pain points identified by Gong's analysis.
+IMPORTANT: The customer_type field indicates if this is a "new" or "existing" customer based on call title analysis.
 
-Create a concise, actionable briefing organized by call. Highlight deal-critical information and competitive intelligence.
+Format each call as:
 
-Max 2500 tokens.
+## [Customer Name] - [duration]
+**Customer Type**: [new | existing]
+**Customer Use Case**: [what they're trying to solve]
+**Pain Points**: [challenges mentioned]
+**Competitors**: [any mentioned, or "None"]
+**Objections**: [concerns raised, or "None"]
+**Next Steps**: [follow-up actions]
 
-Return in markdown format with clear sections for each call."""
+Max 2500 tokens. Be concise and actionable."""
 
         try:
             response = self.client.messages.create(
@@ -409,12 +482,27 @@ Return in markdown format with clear sections for each call."""
 
             content = response.content[0].text
 
+            # Extract competitive intelligence for metadata
+            competitors_mentioned = []
+            for call_summary in call_summaries:
+                if call_summary.get("key_topics"):
+                    for topic in call_summary["key_topics"]:
+                        if isinstance(topic, str):
+                            topic_lower = topic.lower()
+                            if any(comp in topic_lower for comp in ["backstage", "cortex", "opslevel", "roadie", "competitor"]):
+                                competitors_mentioned.append(topic)
+
             return BriefingSection(
-                title="Customer Calls & Insights",
+                title="Call Summary",
                 content=content,
-                priority=11,  # Highest priority (updated from 10)
+                priority=10,
                 source_count=1,
-                metadata={"total_calls": len(calls)},
+                metadata={
+                    "total_calls": len(calls),
+                    "new_customers": sum(1 for c in call_summaries if c["customer_type"] == "new"),
+                    "existing_customers": sum(1 for c in call_summaries if c["customer_type"] == "existing"),
+                    "competitors_mentioned": len(competitors_mentioned)
+                },
             )
 
         except Exception as e:
@@ -592,7 +680,7 @@ Return a markdown-formatted section."""
             region = weather.location.get('region', '').replace(' ', '-').lower()
             weather_link = f"https://weather.com/weather/today/l/{weather.location.get('lat', 0)},{weather.location.get('lon', 0)}"
 
-            prompt = f"""Create a CONCISE weather summary for {location_name} on {target_date}.
+            prompt = f"""Create a VERY COMPACT weather summary for {location_name} on {target_date}.
 
 Current Conditions:
 - Temperature: {weather.current_temperature}°F (feels like {weather.feels_like}°F)
@@ -604,10 +692,12 @@ Current Conditions:
 Forecast (next 12 hours):
 {forecast_items}
 
-Provide 1-2 sentences summarizing the weather and any important considerations for the day.
-End with: [View detailed forecast]({weather_link})
+Format as:
+**{location_name}**
+Currently [temp]°F, [conditions]. [One key consideration if any (e.g., high humidity, poor visibility, wind)].
+[View detailed forecast]({weather_link})
 
-Keep it brief and actionable. Return in markdown format."""
+Maximum 2 sentences total. Be extremely concise."""
 
             response = self.client.messages.create(
                 model=self.model,
@@ -677,6 +767,397 @@ Keep it brief - just headline with link and one-sentence summary. No extra analy
             self.logger.error(f"Failed to create news section: {str(e)}")
             return None
 
+    async def _create_critical_items_section(
+        self,
+        collected_data: Any,
+        target_date: date
+    ) -> Optional[BriefingSection]:
+        """Create section for critical items with deadlines in next 48 hours"""
+        try:
+            from datetime import timedelta
+
+            # Calculate 48-hour deadline window
+            deadline_end = target_date + timedelta(hours=48)
+
+            critical_items = []
+
+            # Extract from calendar events
+            if hasattr(collected_data, 'calendar_events') and collected_data.calendar_events:
+                for event in collected_data.calendar_events:
+                    title_lower = event.title.lower()
+                    # Check for deadline keywords
+                    if any(keyword in title_lower for keyword in ['deadline', 'due', 'reminder', 'submit']):
+                        # Check if within 48 hours
+                        if event.start_time.date() <= deadline_end.date():
+                            critical_items.append({
+                                "source": "Calendar",
+                                "time": event.start_time.strftime("%Y-%m-%d %H:%M"),
+                                "description": event.title,
+                                "type": "calendar_event"
+                            })
+
+            # Extract from emails
+            if hasattr(collected_data, 'emails') and collected_data.emails:
+                for email in collected_data.emails[:20]:  # Check recent emails
+                    subject_lower = email.subject.lower() if email.subject else ""
+                    snippet_lower = email.snippet.lower() if email.snippet else ""
+
+                    # Check for deadline/urgency keywords
+                    if any(keyword in subject_lower or keyword in snippet_lower
+                           for keyword in ['deadline', 'due', 'urgent', 'asap', 'eod', 'today']):
+                        critical_items.append({
+                            "source": "Email",
+                            "time": email.received_at.strftime("%Y-%m-%d") if hasattr(email, 'received_at') else "Recent",
+                            "description": f"{email.sender}: {email.subject}",
+                            "type": "email"
+                        })
+
+            # Extract from Slack
+            if hasattr(collected_data, 'slack_messages') and collected_data.slack_messages:
+                for msg in collected_data.slack_messages[:20]:
+                    text_lower = msg.text.lower() if msg.text else ""
+
+                    if any(keyword in text_lower for keyword in ['deadline', 'due', 'urgent', 'asap']):
+                        critical_items.append({
+                            "source": "Slack",
+                            "time": msg.timestamp.strftime("%Y-%m-%d") if hasattr(msg, 'timestamp') else "Recent",
+                            "description": f"{msg.user}: {msg.text[:100]}...",
+                            "type": "slack"
+                        })
+
+            # If no critical items found, return None
+            if not critical_items:
+                return None
+
+            # Format for Claude
+            items_text = "\n".join([
+                f"- [{item['source']}] {item['time']}: {item['description']}"
+                for item in critical_items[:10]  # Limit to 10 most critical
+            ])
+
+            prompt = f"""Analyze these potential critical items with deadlines in the next 48 hours.
+
+Items identified:
+{items_text}
+
+For each TRUE deadline or critical item:
+- Extract the actual deadline date/time
+- Summarize what is due in 1-2 lines
+- Note the source
+
+Format as a bulleted list, ordered by urgency (soonest first):
+- **[Deadline Time]** What is due - *Source*
+
+Only include items that are actual actionable deadlines, not general reminders."""
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            content = response.content[0].text
+
+            return BriefingSection(
+                title="Critical Items",
+                content=content,
+                priority=1,  # Highest priority
+                source_count=len(set([item['source'] for item in critical_items])),
+                metadata={"total_items": len(critical_items)},
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create critical items section: {str(e)}")
+            return None
+
+    async def _create_new_requests_section(
+        self,
+        collected_data: Any,
+        target_date: date
+    ) -> Optional[BriefingSection]:
+        """Create section for new incoming requests"""
+        try:
+            new_requests = []
+
+            # Extract from emails - look for request patterns
+            if hasattr(collected_data, 'emails') and collected_data.emails:
+                for email in collected_data.emails[:30]:
+                    subject_lower = email.subject.lower() if email.subject else ""
+                    snippet_lower = email.snippet.lower() if email.snippet else ""
+                    combined_text = f"{subject_lower} {snippet_lower}"
+
+                    # Check for request keywords
+                    if any(keyword in combined_text for keyword in
+                           ['can you', 'could you', 'please', 'need', 'help with', 'requesting', 'request for']):
+                        new_requests.append({
+                            "source": "Email",
+                            "requester": email.sender,
+                            "request": f"{email.subject}: {email.snippet[:150]}",
+                            "type": "email"
+                        })
+
+            # Extract from Slack - unanswered DMs and mentions
+            if hasattr(collected_data, 'slack_messages') and collected_data.slack_messages:
+                for msg in collected_data.slack_messages:
+                    # Prioritize unanswered DMs and mentions
+                    if (hasattr(msg, 'is_dm_unanswered') and msg.is_dm_unanswered) or \
+                       (hasattr(msg, 'is_mention') and msg.is_mention):
+                        new_requests.append({
+                            "source": "Slack DM" if hasattr(msg, 'is_dm') and msg.is_dm else "Slack Mention",
+                            "requester": msg.user if hasattr(msg, 'user') else "Unknown",
+                            "request": msg.text[:150] if msg.text else "",
+                            "type": "slack"
+                        })
+
+            # Extract from calendar - new meeting invites
+            if hasattr(collected_data, 'calendar_events') and collected_data.calendar_events:
+                for event in collected_data.calendar_events[:10]:
+                    # Check if event was created recently (within last 24 hours as proxy for "new")
+                    if hasattr(event, 'created_at'):
+                        from datetime import timedelta
+                        if event.created_at and (target_date - event.created_at.date()).days <= 1:
+                            new_requests.append({
+                                "source": "Calendar Invite",
+                                "requester": event.organizer if hasattr(event, 'organizer') else "Unknown",
+                                "request": f"Meeting: {event.title} at {event.start_time.strftime('%H:%M')}",
+                                "type": "calendar"
+                            })
+
+            # If no new requests found, return None
+            if not new_requests:
+                return None
+
+            # Format for Claude
+            requests_text = "\n".join([
+                f"- [{req['source']}] {req['requester']}: {req['request']}"
+                for req in new_requests[:15]  # Limit to 15 requests
+            ])
+
+            prompt = f"""Identify new requests requiring action from these incoming messages:
+
+Requests:
+{requests_text}
+
+For each request:
+- Who is requesting
+- What they need
+- Source (Email/Slack/Calendar)
+
+Format as a bulleted list:
+- **[Requester]** needs [what they need] - *via [Source]*
+
+Keep it concise, focus on actionable requests."""
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            content = response.content[0].text
+
+            return BriefingSection(
+                title="New Requests",
+                content=content,
+                priority=2,
+                source_count=len(set([req['source'] for req in new_requests])),
+                metadata={"total_requests": len(new_requests)},
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create new requests section: {str(e)}")
+            return None
+
+    async def _create_agenda_section(
+        self,
+        collected_data: Any,
+        target_date: date
+    ) -> Optional[BriefingSection]:
+        """Create simple time-ordered agenda from calendar events"""
+        try:
+            events = []
+            if hasattr(collected_data, 'calendar_events') and collected_data.calendar_events:
+                # Filter events for target_date
+                for event in collected_data.calendar_events:
+                    if event.start_time.date() == target_date:
+                        events.append(event)
+
+            if not events:
+                return None
+
+            # Sort by start time
+            events.sort(key=lambda e: e.start_time)
+
+            # Format as simple time + title list
+            agenda_lines = []
+            for event in events:
+                time_str = event.start_time.strftime("%I:%M %p").lstrip("0")  # Remove leading zero
+                agenda_lines.append(f"{time_str}  {event.title}")
+
+            content = "\n".join(agenda_lines)
+
+            return BriefingSection(
+                title="Agenda",
+                content=content,
+                priority=6,
+                source_count=1,
+                metadata={"total_events": len(events)},
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create agenda section: {str(e)}")
+            return None
+
+    async def _create_ai_news_section(
+        self,
+        collected_data: Any,
+        target_date: date
+    ) -> Optional[BriefingSection]:
+        """Create section for AI/ML news with keyword filtering"""
+        try:
+            ai_keywords = [
+                "ai", "artificial intelligence", "llm", "large language model",
+                "gpt", "claude", "chatgpt", "gemini", "machine learning", "ml",
+                "deep learning", "neural network", "generative ai", "genai",
+                "transformer", "openai", "anthropic", "midjourney", "stable diffusion"
+            ]
+
+            ai_articles = []
+            if hasattr(collected_data, 'news') and collected_data.news:
+                for article in collected_data.news:
+                    # Check title and description for AI keywords
+                    title_lower = article.title.lower() if article.title else ""
+                    desc_lower = article.description.lower() if article.description else ""
+                    combined_text = f"{title_lower} {desc_lower}"
+
+                    # Check if any AI keyword is present
+                    if any(keyword in combined_text for keyword in ai_keywords):
+                        ai_articles.append(article)
+
+            if not ai_articles:
+                return None
+
+            # Limit to top 10 most relevant
+            ai_articles = ai_articles[:10]
+
+            # Format articles for Claude
+            articles_text = "\n\n".join([
+                f"Title: {article.title}\nURL: {article.url}\nDescription: {article.description or 'N/A'}"
+                for article in ai_articles
+            ])
+
+            prompt = f"""Summarize these AI/ML news headlines relevant to the tech industry.
+
+Articles:
+{articles_text}
+
+For each relevant article, format as:
+- **[Headline](URL)** - One sentence summary focusing on key impact or development
+
+Prioritize news about:
+- Major AI product launches or updates
+- AI regulation or policy changes
+- Significant AI research breakthroughs
+- Enterprise AI adoption trends
+- AI company funding or acquisitions
+
+Keep it concise. Max 800 tokens."""
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            content = response.content[0].text
+
+            return BriefingSection(
+                title="AI News",
+                content=content,
+                priority=5,
+                source_count=1,
+                metadata={"total_articles": len(ai_articles)},
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create AI news section: {str(e)}")
+            return None
+
+    async def _create_competitor_news_section(
+        self,
+        collected_data: Any,
+        target_date: date
+    ) -> Optional[BriefingSection]:
+        """Create section for Port competitor news with keyword filtering"""
+        try:
+            competitor_keywords = [
+                "backstage", "spotify backstage", "cortex", "cortex.io",
+                "opslevel", "roadie", "roadie.io", "configure8",
+                "internal developer portal", "idp", "developer portal",
+                "service catalog", "platform engineering", "developer experience"
+            ]
+
+            competitor_articles = []
+            if hasattr(collected_data, 'news') and collected_data.news:
+                for article in collected_data.news:
+                    # Check title and description for competitor keywords
+                    title_lower = article.title.lower() if article.title else ""
+                    desc_lower = article.description.lower() if article.description else ""
+                    combined_text = f"{title_lower} {desc_lower}"
+
+                    # Check if any competitor keyword is present
+                    if any(keyword in combined_text for keyword in competitor_keywords):
+                        competitor_articles.append(article)
+
+            if not competitor_articles:
+                return None
+
+            # Limit to top 10 most relevant
+            competitor_articles = competitor_articles[:10]
+
+            # Format articles for Claude
+            articles_text = "\n\n".join([
+                f"Title: {article.title}\nURL: {article.url}\nDescription: {article.description or 'N/A'}"
+                for article in competitor_articles
+            ])
+
+            prompt = f"""Summarize news about internal developer platforms and Port competitors.
+
+Articles:
+{articles_text}
+
+For each relevant article, format as:
+- **[Headline](URL)** - One sentence summary focusing on competitive implications
+
+Focus on:
+- Backstage, Cortex, Opslevel, Roadie, Configure8 announcements
+- Internal developer portal (IDP) market trends
+- Platform engineering best practices
+- Developer experience innovations
+- Service catalog and portal launches
+
+Highlight competitive intelligence relevant to Port's positioning. Max 800 tokens."""
+
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            content = response.content[0].text
+
+            return BriefingSection(
+                title="Competitor News",
+                content=content,
+                priority=4,
+                source_count=1,
+                metadata={"total_articles": len(competitor_articles)},
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create competitor news section: {str(e)}")
+            return None
+
     async def _create_calendar_conflicts_section(
         self, events: List[Any], target_date: date
     ) -> Optional[BriefingSection]:
@@ -725,9 +1206,9 @@ Return in markdown format."""
             content = response.content[0].text
 
             return BriefingSection(
-                title="Calendar Conflicts & Scheduling Issues",
+                title="Action Items",
                 content=content,
-                priority=9,  # High priority
+                priority=7,
                 source_count=1,
                 metadata={
                     "total_conflicts": analysis["total_conflicts"],
@@ -740,77 +1221,3 @@ Return in markdown format."""
             self.logger.error(f"Failed to create calendar conflicts section: {str(e)}")
             return None
 
-    async def _generate_summary(
-        self,
-        collected_data: CollectedData,
-        sections: List[BriefingSection],
-        target_date: date
-    ) -> BriefingSummary:
-        """Generate executive summary from all sections"""
-
-        # Compile all section content
-        all_content = "\n\n".join([f"## {s.title}\n{s.content}" for s in sections])
-
-        prompt = f"""Based on this daily briefing for {target_date}, create an executive summary focused on actionable work items.
-
-IMPORTANT: Focus ONLY on items related to the user's role as Head of Product Marketing at Port.
-
-Provide:
-1. 3-5 key highlights from EMAILS, CALENDAR, SLACK, and GONG CALLS (ignore news/weather)
-2. 3-5 action items that require the user's attention TODAY (emails to respond to, meetings to prepare for, DMs to answer, follow-ups from calls)
-3. Overall sentiment (positive/neutral/negative)
-
-Ignore world news and weather in the summary. Focus on:
-- Email follow-ups needed
-- Meeting preparation or scheduling issues
-- Slack messages requiring response
-- Customer call follow-ups from Gong
-
-Briefing content:
-{all_content[:8000]}  # Limit to avoid token limits
-
-Return as JSON with keys: key_highlights (array), action_items (array), overall_sentiment (string)"""
-
-        try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            content = response.content[0].text
-
-            # Parse JSON response - handle markdown code blocks
-            import json
-            import re
-
-            # Try to extract JSON from markdown code blocks
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
-            if json_match:
-                content = json_match.group(1)
-            else:
-                # Try to find raw JSON in the response
-                content = content.strip()
-                if not content.startswith('{'):
-                    start = content.find('{')
-                    end = content.rfind('}')
-                    if start != -1 and end != -1:
-                        content = content[start:end+1]
-
-            summary_data = json.loads(content)
-
-            return BriefingSummary(
-                key_highlights=summary_data.get("key_highlights", []),
-                action_items=summary_data.get("action_items", []),
-                overall_sentiment=summary_data.get("overall_sentiment", "neutral"),
-            )
-
-        except Exception as e:
-            self.logger.error(f"Failed to generate summary: {str(e)}")
-            self.logger.error(f"Response content: {content if 'content' in locals() else 'N/A'}")
-            # Return empty summary on failure
-            return BriefingSummary(
-                key_highlights=["Summary generation failed"],
-                action_items=[],
-                overall_sentiment="neutral",
-            )
