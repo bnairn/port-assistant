@@ -110,34 +110,12 @@ class BriefingAgent:
             if weather_section:
                 sections.append(weather_section)
 
-        # 2. Critical Items (Priority 2)
-        critical_items_section = await self._create_critical_items_section(collected_data, target_date)
-        if critical_items_section:
-            sections.append(critical_items_section)
-
-        # 3. New Requests (Priority 3)
-        new_requests_section = await self._create_new_requests_section(collected_data, target_date)
-        if new_requests_section:
-            sections.append(new_requests_section)
-
-        # 4. Competitor News (Priority 5)
-        if collected_data.news_articles:
-            competitor_news_section = await self._create_competitor_news_section(collected_data, target_date)
-            if competitor_news_section:
-                sections.append(competitor_news_section)
-
-        # 5. AI News (Priority 6)
-        if collected_data.news_articles:
-            ai_news_section = await self._create_ai_news_section(collected_data, target_date)
-            if ai_news_section:
-                sections.append(ai_news_section)
-
-        # 6. Agenda (includes conflicts if any) (Priority 6)
+        # 2. Agenda with conflicts (Priority 2) - What's happening today
         agenda_section = await self._create_agenda_section(collected_data, target_date)
         if agenda_section:
             sections.append(agenda_section)
 
-        # 7. Slack Summary (Priority 7)
+        # 3. Slack Summary (Priority 3) - Critical messages needing attention
         if collected_data.slack_messages:
             slack_section = await self._create_slack_section(
                 collected_data.slack_messages, target_date
@@ -145,17 +123,33 @@ class BriefingAgent:
             if slack_section:
                 sections.append(slack_section)
 
-        # 8. Email Summary (Priority 8)
+        # 4. Email Summary (Priority 4) - Overnight emails and meeting invites
         if collected_data.emails:
             email_section = await self._create_email_section(collected_data.emails, target_date)
             if email_section:
                 sections.append(email_section)
 
-        # 9. Call Summary (Priority 9)
+        # 5. AI News (Priority 5) - Industry AI headlines
+        if collected_data.news_articles:
+            ai_news_section = await self._create_ai_news_section(collected_data, target_date)
+            if ai_news_section:
+                sections.append(ai_news_section)
+
+        # 6. Competitor News (Priority 6) - IDP and competitor headlines
+        if collected_data.news_articles:
+            competitor_news_section = await self._create_competitor_news_section(collected_data, target_date)
+            if competitor_news_section:
+                sections.append(competitor_news_section)
+
+        # 7. New Customer Calls (Priority 7) - Customer insights
         if collected_data.gong_calls:
             gong_section = await self._create_gong_section(collected_data.gong_calls, target_date)
             if gong_section:
                 sections.append(gong_section)
+
+        # Critical Items and New Requests sections removed - no longer needed
+        # critical_items_section = await self._create_critical_items_section(collected_data, target_date)
+        # new_requests_section = await self._create_new_requests_section(collected_data, target_date)
 
         # REMAINING SECTIONS - Keep existing priorities for now
 
@@ -250,7 +244,7 @@ Focus on actionable items. Max 1200 tokens."""
             return BriefingSection(
                 title="Email Summary",
                 content=content,
-                priority=8,
+                priority=4,
                 source_count=1,
                 metadata={
                     "total_emails": total_emails,
@@ -394,7 +388,7 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             return BriefingSection(
                 title="Slack Summary",
                 content=content,
-                priority=7,
+                priority=3,
                 source_count=1,
                 metadata={
                     "total_messages": len(messages),
@@ -465,14 +459,20 @@ IMPORTANT: The customer_type field indicates if this is a "new" or "existing" cu
 Format each call as:
 
 ## [Customer Name] - [duration]
+
 **Customer Type**: [new | existing]
+
 **Customer Use Case**: [what they're trying to solve]
+
 **Pain Points**: [challenges mentioned]
+
 **Competitors**: [any mentioned, or "None"]
+
 **Objections**: [concerns raised, or "None"]
+
 **Next Steps**: [follow-up actions]
 
-Max 2500 tokens. Be concise and actionable."""
+Add blank lines between each field for readability. Max 2500 tokens. Be concise and actionable."""
 
         try:
             response = self.client.messages.create(
@@ -496,7 +496,7 @@ Max 2500 tokens. Be concise and actionable."""
             return BriefingSection(
                 title="New Customer Calls",
                 content=content,
-                priority=9,
+                priority=7,
                 source_count=1,
                 metadata={
                     "total_calls": len(call_summaries),
@@ -1032,11 +1032,14 @@ Keep it concise, focus on actionable requests."""
                         organizer = organizer_email
                     organizer = f"({organizer})"
 
-                # Get agenda/description if available
+                # Get agenda/description if available (strip HTML tags)
                 agenda = ""
                 if hasattr(event, 'description') and event.description:
-                    # Take first line or first 80 chars of description
-                    desc = event.description.strip().split('\n')[0]
+                    import re
+                    # Strip HTML tags
+                    desc = re.sub(r'<[^>]+>', '', event.description.strip())
+                    # Take first line or first 80 chars
+                    desc = desc.split('\n')[0].strip()
                     if len(desc) > 80:
                         desc = desc[:77] + "..."
                     if desc:
@@ -1057,7 +1060,7 @@ Keep it concise, focus on actionable requests."""
             return BriefingSection(
                 title="Agenda",
                 content=content,
-                priority=6,
+                priority=2,
                 source_count=1,
                 metadata={"total_events": len(events)},
             )
@@ -1081,12 +1084,12 @@ Keep it concise, focus on actionable requests."""
             ]
 
             ai_articles = []
-            if hasattr(collected_data, 'news') and collected_data.news:
-                for article in collected_data.news:
-                    # Check title and description for AI keywords
+            if hasattr(collected_data, 'news_articles') and collected_data.news_articles:
+                for article in collected_data.news_articles:
+                    # Check title and content for AI keywords
                     title_lower = article.title.lower() if article.title else ""
-                    desc_lower = article.description.lower() if article.description else ""
-                    combined_text = f"{title_lower} {desc_lower}"
+                    content_lower = article.content.lower() if article.content else ""
+                    combined_text = f"{title_lower} {content_lower}"
 
                     # Check if any AI keyword is present
                     if any(keyword in combined_text for keyword in ai_keywords):
@@ -1100,7 +1103,7 @@ Keep it concise, focus on actionable requests."""
 
             # Format articles for Claude
             articles_text = "\n\n".join([
-                f"Title: {article.title}\nURL: {article.url}\nDescription: {article.description or 'N/A'}"
+                f"Title: {article.title}\nURL: {article.url}\nContent: {article.content or 'N/A'}"
                 for article in ai_articles
             ])
 
@@ -1156,12 +1159,12 @@ Keep it concise. Max 800 tokens."""
             ]
 
             competitor_articles = []
-            if hasattr(collected_data, 'news') and collected_data.news:
-                for article in collected_data.news:
-                    # Check title and description for competitor keywords
+            if hasattr(collected_data, 'news_articles') and collected_data.news_articles:
+                for article in collected_data.news_articles:
+                    # Check title and content for competitor keywords
                     title_lower = article.title.lower() if article.title else ""
-                    desc_lower = article.description.lower() if article.description else ""
-                    combined_text = f"{title_lower} {desc_lower}"
+                    content_lower = article.content.lower() if article.content else ""
+                    combined_text = f"{title_lower} {content_lower}"
 
                     # Check if any competitor keyword is present
                     if any(keyword in combined_text for keyword in competitor_keywords):
@@ -1175,7 +1178,7 @@ Keep it concise. Max 800 tokens."""
 
             # Format articles for Claude
             articles_text = "\n\n".join([
-                f"Title: {article.title}\nURL: {article.url}\nDescription: {article.description or 'N/A'}"
+                f"Title: {article.title}\nURL: {article.url}\nContent: {article.content or 'N/A'}"
                 for article in competitor_articles
             ])
 
@@ -1207,7 +1210,7 @@ Highlight competitive intelligence relevant to Port's positioning. Max 800 token
             return BriefingSection(
                 title="Competitor News",
                 content=content,
-                priority=4,
+                priority=6,
                 source_count=1,
                 metadata={"total_articles": len(competitor_articles)},
             )

@@ -41,8 +41,8 @@ try:
         f.write(f\"**Processing time:** {briefing['processing_time_seconds']:.2f} seconds\n\n\")
         f.write(\"---\n\n\")
 
-        # Sort sections by priority (highest first)
-        sections = sorted(briefing['sections'], key=lambda x: x['priority'], reverse=True)
+        # Sort sections by priority (lowest number = highest priority, 1 is first)
+        sections = sorted(briefing['sections'], key=lambda x: x['priority'])
 
         for section in sections:
             f.write(f\"## {section['title']}\n\n\")
