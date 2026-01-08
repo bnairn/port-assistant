@@ -39,28 +39,6 @@ try:
         f.write(f\"# Daily Briefing - {briefing['date']}\n\n\")
         f.write(f\"**Generated at:** {briefing['generated_at']}\n\n\")
         f.write(f\"**Processing time:** {briefing['processing_time_seconds']:.2f} seconds\n\n\")
-
-        # Summary section
-        f.write(\"---\n\n\")
-        f.write(\"## 📋 Executive Summary\n\n\")
-
-        summary = briefing['summary']
-
-        if summary['key_highlights']:
-            f.write(\"### 🎯 Key Highlights\n\n\")
-            for highlight in summary['key_highlights']:
-                f.write(f\"- {highlight}\n\")
-            f.write(\"\n\")
-
-        if summary['action_items']:
-            f.write(\"### ✅ Action Items\n\n\")
-            for item in summary['action_items']:
-                f.write(f\"- [ ] {item}\n\")
-            f.write(\"\n\")
-
-        f.write(f\"**Overall Sentiment:** {summary['overall_sentiment'].title()}\n\n\")
-
-        # Detailed sections
         f.write(\"---\n\n\")
 
         # Sort sections by priority (highest first)
@@ -72,10 +50,46 @@ try:
 
             if 'metadata' in section and section['metadata']:
                 metadata = section['metadata']
+                metadata_lines = []
+
+                # Email metadata
                 if 'total_emails' in metadata:
-                    f.write(f\"📧 Total emails analyzed: {metadata['total_emails']}\n\n\")
+                    metadata_lines.append(f\"📧 Total emails: {metadata['total_emails']}\")
+                if 'meeting_invites' in metadata:
+                    metadata_lines.append(f\"📅 Meeting invites: {metadata['meeting_invites']}\")
+
+                # Calendar metadata
                 if 'total_events' in metadata:
-                    f.write(f\"📅 Total events: {metadata['total_events']}\n\n\")
+                    metadata_lines.append(f\"📅 Total events: {metadata['total_events']}\")
+
+                # Slack metadata
+                if 'total_messages' in metadata:
+                    metadata_lines.append(f\"💬 Total messages: {metadata['total_messages']}\")
+                if 'unanswered_dms' in metadata:
+                    metadata_lines.append(f\"✉️ Unanswered DMs: {metadata['unanswered_dms']}\")
+                if 'mentions' in metadata:
+                    metadata_lines.append(f\"@️ Mentions: {metadata['mentions']}\")
+
+                # Gong metadata
+                if 'total_calls' in metadata:
+                    metadata_lines.append(f\"📞 Total calls: {metadata['total_calls']}\")
+                if 'new_customers' in metadata:
+                    metadata_lines.append(f\"🆕 New customers: {metadata['new_customers']}\")
+                if 'existing_customers' in metadata:
+                    metadata_lines.append(f\"🔄 Existing customers: {metadata['existing_customers']}\")
+
+                # News metadata
+                if 'total_articles' in metadata:
+                    metadata_lines.append(f\"📰 Articles: {metadata['total_articles']}\")
+
+                # Critical items metadata
+                if 'total_items' in metadata:
+                    metadata_lines.append(f\"⚠️ Critical items: {metadata['total_items']}\")
+                if 'total_requests' in metadata:
+                    metadata_lines.append(f\"📬 New requests: {metadata['total_requests']}\")
+
+                if metadata_lines:
+                    f.write(\" | \".join(metadata_lines) + \"\n\n\")
 
             f.write(section['content'])
             f.write(\"\n\n---\n\n\")
