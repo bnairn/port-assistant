@@ -193,8 +193,8 @@ class BriefingAgent:
             if miro_section:
                 sections.append(miro_section)
 
-        # Sort sections by priority (descending - higher number = higher priority)
-        sections.sort(key=lambda s: s.priority, reverse=True)
+        # Sort sections by priority (ascending - lower number = higher priority, 1 is highest)
+        sections.sort(key=lambda s: s.priority)
 
         return sections
 
@@ -417,11 +417,13 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             return None
 
     async def _create_gong_section(self, calls: List[Any], target_date: date) -> Optional[BriefingSection]:
-        """Create briefing section from Gong calls with customer type detection"""
+        """Create briefing section from NEW customer Gong calls only"""
         if not calls:
             return None
 
         call_summaries = []
+        new_customer_calls = []
+
         for call in calls:
             # Detect customer type from call title
             title_lower = call.title.lower() if call.title else ""
@@ -434,19 +436,26 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             elif any(keyword in title_lower for keyword in ["sync", "check-in", "follow-up", "follow up", "weekly", "monthly", "quarterly"]):
                 customer_type = "existing"
 
-            call_summaries.append({
-                "title": call.title,
-                "customer": call.customer_name or "Unknown",
-                "customer_type": customer_type,
-                "duration": f"{call.duration_minutes} min",
-                "key_topics": call.key_topics,
-                "action_items": call.action_items,
-                "sentiment": call.sentiment_score,
-                "summary": call.summary,
-                "next_steps": call.next_steps,
-            })
+            # Only include NEW customer calls
+            if customer_type == "new":
+                new_customer_calls.append(call)
+                call_summaries.append({
+                    "title": call.title,
+                    "customer": call.customer_name or "Unknown",
+                    "customer_type": customer_type,
+                    "duration": f"{call.duration_minutes} min",
+                    "key_topics": call.key_topics,
+                    "action_items": call.action_items,
+                    "sentiment": call.sentiment_score,
+                    "summary": call.summary,
+                    "next_steps": call.next_steps,
+                })
 
-        prompt = f"""Analyze these {len(calls)} customer/prospect calls from {target_date} and extract critical insights.
+        # If no new customer calls, return None
+        if not call_summaries:
+            return None
+
+        prompt = f"""Analyze these {len(call_summaries)} NEW customer/prospect calls from {target_date} and extract critical insights.
 
 For each call, create a structured summary with:
 1. **Customer Type** - New or Existing (already detected)
@@ -493,14 +502,13 @@ Max 2500 tokens. Be concise and actionable."""
                                 competitors_mentioned.append(topic)
 
             return BriefingSection(
-                title="Call Summary",
+                title="New Customer Calls",
                 content=content,
                 priority=10,
                 source_count=1,
                 metadata={
-                    "total_calls": len(calls),
-                    "new_customers": sum(1 for c in call_summaries if c["customer_type"] == "new"),
-                    "existing_customers": sum(1 for c in call_summaries if c["customer_type"] == "existing"),
+                    "total_calls": len(call_summaries),
+                    "new_customers": len(call_summaries),
                     "competitors_mentioned": len(competitors_mentioned)
                 },
             )
