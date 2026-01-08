@@ -258,7 +258,7 @@ Focus on actionable items. Max 1200 tokens."""
             return BriefingSection(
                 title="Email Summary",
                 content=content,
-                priority=10,
+                priority=9,
                 source_count=1,
                 metadata={
                     "total_emails": total_emails,
@@ -402,7 +402,7 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             return BriefingSection(
                 title="Slack Summary",
                 content=content,
-                priority=9,
+                priority=8,
                 source_count=1,
                 metadata={
                     "total_messages": len(messages),
@@ -495,7 +495,7 @@ Max 2500 tokens. Be concise and actionable."""
             return BriefingSection(
                 title="Call Summary",
                 content=content,
-                priority=11,
+                priority=10,
                 source_count=1,
                 metadata={
                     "total_calls": len(calls),
@@ -600,7 +600,7 @@ Return a markdown-formatted section."""
             return BriefingSection(
                 title="Documentation & Content",
                 content=content,
-                priority=5,
+                priority=4,
                 source_count=1,
                 metadata={"total_pages": len(pages)},
             )
@@ -1029,7 +1029,7 @@ Keep it concise, focus on actionable requests."""
             return BriefingSection(
                 title="Agenda",
                 content=content,
-                priority=7,  # Updated from 6 to make room for Weather at top
+                priority=6,
                 source_count=1,
                 metadata={"total_events": len(events)},
             )
@@ -1104,7 +1104,7 @@ Keep it concise. Max 800 tokens."""
             return BriefingSection(
                 title="AI News",
                 content=content,
-                priority=6,
+                priority=5,
                 source_count=1,
                 metadata={"total_articles": len(ai_articles)},
             )
@@ -1179,7 +1179,7 @@ Highlight competitive intelligence relevant to Port's positioning. Max 800 token
             return BriefingSection(
                 title="Competitor News",
                 content=content,
-                priority=5,
+                priority=4,
                 source_count=1,
                 metadata={"total_articles": len(competitor_articles)},
             )
@@ -1238,7 +1238,7 @@ Return in markdown format."""
             return BriefingSection(
                 title="Action Items",
                 content=content,
-                priority=8,
+                priority=7,
                 source_count=1,
                 metadata={
                     "total_conflicts": analysis["total_conflicts"],
