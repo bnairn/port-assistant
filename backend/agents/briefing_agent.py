@@ -1055,7 +1055,8 @@ Keep it concise, focus on actionable requests."""
 
                 agenda_lines.append(line)
 
-            content = conflicts_text + "\n".join(agenda_lines)
+            # Join with two spaces + newline for proper markdown line breaks
+            content = conflicts_text + "  \n".join(agenda_lines)
 
             return BriefingSection(
                 title="Agenda",
