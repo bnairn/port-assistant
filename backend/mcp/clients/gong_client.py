@@ -44,7 +44,7 @@ class GongMCPClient(BaseMCPClient):
         **kwargs
     ) -> List[GongData]:
         """
-        Fetch Gong call recordings from specified date range
+        Fetch Gong call recordings with AI-extracted content from specified date range
 
         Args:
             start_date: Start date for calls
@@ -54,82 +54,120 @@ class GongMCPClient(BaseMCPClient):
             end_date = start_date
 
         try:
-            # Fetch calls using GET with query parameters
+            # Use /v2/calls/extensive to get AI-extracted content
             from_datetime = datetime.combine(start_date, datetime.min.time()).isoformat() + "Z"
             to_datetime = datetime.combine(end_date, datetime.max.time()).isoformat() + "Z"
 
-            url = f"{self.base_url}/calls"
-            params = {
-                "fromDateTime": from_datetime,
-                "toDateTime": to_datetime
+            url = f"{self.base_url}/calls/extensive"
+
+            # Request AI-extracted content fields
+            payload = {
+                "filter": {
+                    "fromDateTime": from_datetime,
+                    "toDateTime": to_datetime
+                },
+                "contentSelector": {
+                    "context": "Extended",
+                    "exposedFields": {
+                        "content": {
+                            "topics": True,
+                            "brief": True,
+                            "outline": True,
+                            "highlights": True,
+                            "keyPoints": True,
+                            "callOutcome": True
+                        },
+                        "parties": True
+                    }
+                }
             }
 
-            response = await self.http_client.get(url, params=params)
+            response = await self.http_client.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
 
             calls = []
             for call_item in data.get("calls", []):
-                call_data = await self._parse_call(call_item)
+                call_data = await self._parse_extensive_call(call_item)
                 if call_data:
                     calls.append(call_data)
 
-            self.logger.info(f"Fetched {len(calls)} Gong calls")
+            self.logger.info(f"Fetched {len(calls)} Gong calls with AI content")
             return calls
 
         except Exception as e:
             self.logger.error(f"Error fetching Gong calls: {str(e)}")
             raise MCPClientError(f"Failed to fetch Gong calls: {str(e)}")
 
-    async def _parse_call(self, call_item: Dict[str, Any]) -> Optional[GongData]:
-        """Parse call data into GongData model"""
+    async def _parse_extensive_call(self, call_item: Dict[str, Any]) -> Optional[GongData]:
+        """Parse extensive call data with AI content into GongData model"""
         try:
-            call_id = call_item.get("id", "")
+            metadata = call_item.get("metaData", {})
+            content = call_item.get("content", {})
+            parties = call_item.get("parties", [])
 
-            # Fetch detailed call info
-            detailed_data = await self._fetch_call_details(call_id)
+            call_id = metadata.get("id", "")
 
             # Parse started time
-            started = call_item.get("started")
+            started = metadata.get("started")
             call_date = datetime.fromisoformat(started.replace("Z", "+00:00")) if started else datetime.utcnow()
 
-            # Extract participants
+            # Extract participants from parties
             participants = []
-            for party in call_item.get("parties", []):
+            customer_name = None
+
+            for party in parties:
                 name = party.get("name", "")
                 if name:
                     participants.append(name)
+                    # Try to identify customer (external party)
+                    if party.get("context") == "External" or party.get("affiliation") != "Internal":
+                        if not customer_name:
+                            customer_name = name
+
+            # Extract AI content
+            brief = content.get("brief", "")
+            topics = content.get("topics", [])
+            key_points = content.get("keyPoints", [])
+            highlights = content.get("highlights", [])
+            call_outcome = content.get("callOutcome", {})
+
+            # Format topics into strings
+            topic_names = [topic.get("name", "") for topic in topics if isinstance(topic, dict)]
+
+            # Format key points into action items
+            action_items = []
+            if isinstance(key_points, list):
+                for kp in key_points:
+                    if isinstance(kp, dict):
+                        action_items.append(kp.get("text", ""))
+                    elif isinstance(kp, str):
+                        action_items.append(kp)
+
+            # Extract highlights as additional context
+            highlight_texts = []
+            if isinstance(highlights, list):
+                for highlight in highlights[:3]:  # Top 3 highlights
+                    if isinstance(highlight, dict):
+                        highlight_texts.append(highlight.get("text", ""))
+                    elif isinstance(highlight, str):
+                        highlight_texts.append(highlight)
 
             return GongData(
                 call_id=call_id,
-                title=call_item.get("title", ""),
+                title=metadata.get("title", ""),
                 date=call_date,
-                duration_minutes=call_item.get("duration", 0) // 60,
+                duration_minutes=metadata.get("duration", 0) // 60,
                 participants=participants,
-                customer_name=detailed_data.get("customer_name"),
-                summary=detailed_data.get("summary"),
-                key_topics=detailed_data.get("key_topics", []),
-                action_items=detailed_data.get("action_items", []),
+                customer_name=customer_name,
+                summary=brief,  # AI-generated brief
+                key_topics=topic_names,  # AI-extracted topics
+                action_items=action_items,  # AI-extracted key points
             )
 
         except Exception as e:
-            self.logger.warning(f"Failed to parse call: {str(e)}")
+            self.logger.warning(f"Failed to parse extensive call: {str(e)}")
             return None
-
-    async def _fetch_call_details(self, call_id: str) -> Dict[str, Any]:
-        """Fetch detailed information for a specific call"""
-        try:
-            url = f"{self.base_url}/calls/{call_id}"
-            response = await self.http_client.get(url)
-
-            if response.status_code == 200:
-                return response.json()
-
-            return {}
-
-        except Exception as e:
-            self.logger.warning(f"Failed to fetch call details for {call_id}: {str(e)}")
-            return {}
 
     async def test_connection(self) -> Dict[str, Any]:
         """Test connection to Gong"""
