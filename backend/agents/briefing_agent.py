@@ -132,20 +132,12 @@ class BriefingAgent:
             if ai_news_section:
                 sections.append(ai_news_section)
 
-        # 6. Agenda (Priority 7)
+        # 6. Agenda (includes conflicts if any) (Priority 6)
         agenda_section = await self._create_agenda_section(collected_data, target_date)
         if agenda_section:
             sections.append(agenda_section)
 
-        # 7. Action Items - Calendar Conflicts (Priority 8)
-        if collected_data.calendar_events:
-            conflicts_section = await self._create_calendar_conflicts_section(
-                collected_data.calendar_events, target_date
-            )
-            if conflicts_section:
-                sections.append(conflicts_section)
-
-        # 8. Slack Summary (Priority 9)
+        # 7. Slack Summary (Priority 7)
         if collected_data.slack_messages:
             slack_section = await self._create_slack_section(
                 collected_data.slack_messages, target_date
@@ -153,13 +145,13 @@ class BriefingAgent:
             if slack_section:
                 sections.append(slack_section)
 
-        # 9. Email Summary (Priority 10)
+        # 8. Email Summary (Priority 8)
         if collected_data.emails:
             email_section = await self._create_email_section(collected_data.emails, target_date)
             if email_section:
                 sections.append(email_section)
 
-        # 10. Call Summary (Priority 11)
+        # 9. Call Summary (Priority 9)
         if collected_data.gong_calls:
             gong_section = await self._create_gong_section(collected_data.gong_calls, target_date)
             if gong_section:
@@ -258,7 +250,7 @@ Focus on actionable items. Max 1200 tokens."""
             return BriefingSection(
                 title="Email Summary",
                 content=content,
-                priority=9,
+                priority=8,
                 source_count=1,
                 metadata={
                     "total_emails": total_emails,
@@ -402,7 +394,7 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             return BriefingSection(
                 title="Slack Summary",
                 content=content,
-                priority=8,
+                priority=7,
                 source_count=1,
                 metadata={
                     "total_messages": len(messages),
@@ -504,7 +496,7 @@ Max 2500 tokens. Be concise and actionable."""
             return BriefingSection(
                 title="New Customer Calls",
                 content=content,
-                priority=10,
+                priority=9,
                 source_count=1,
                 metadata={
                     "total_calls": len(call_summaries),
@@ -981,7 +973,7 @@ Keep it concise, focus on actionable requests."""
         collected_data: Any,
         target_date: date
     ) -> Optional[BriefingSection]:
-        """Create compact time-ordered agenda from calendar events"""
+        """Create compact time-ordered agenda from calendar events with conflicts first"""
         try:
             events = []
             if hasattr(collected_data, 'calendar_events') and collected_data.calendar_events:
@@ -995,6 +987,34 @@ Keep it concise, focus on actionable requests."""
 
             # Sort by start time
             events.sort(key=lambda e: e.start_time)
+
+            # Check for conflicts
+            conflicts_text = ""
+            try:
+                from utils.calendar_analyzer import analyze_calendar
+                analysis = analyze_calendar(events)
+
+                if analysis["total_conflicts"] > 0:
+                    conflicts_text = "**⚠️ CONFLICTS REQUIRING ATTENTION:**\n\n"
+
+                    # Show overlapping meetings
+                    if analysis["overlapping_events"]:
+                        for conflict in analysis["conflicts"]:
+                            if conflict.get("type") == "overlap":
+                                conflicts_text += f"- {conflict.get('time', '')}: {conflict.get('description', '')}\n"
+
+                    # Show problematic back-to-back meetings
+                    if analysis["high_severity_conflicts"] > 0:
+                        for conflict in analysis["conflicts"]:
+                            if conflict.get("severity") == "high" and conflict.get("type") == "back_to_back":
+                                conflicts_text += f"- {conflict.get('time', '')}: {conflict.get('description', '')}\n"
+
+                    conflicts_text += "\n**TODAY'S SCHEDULE:**\n\n"
+                else:
+                    conflicts_text = "**TODAY'S SCHEDULE:**\n\n"
+            except ImportError:
+                # If calendar analyzer not available, just show schedule
+                conflicts_text = "**TODAY'S SCHEDULE:**\n\n"
 
             # Format as: <time> <title> <organizer> <agenda>
             agenda_lines = []
@@ -1032,7 +1052,7 @@ Keep it concise, focus on actionable requests."""
 
                 agenda_lines.append(line)
 
-            content = "\n".join(agenda_lines)
+            content = conflicts_text + "\n".join(agenda_lines)
 
             return BriefingSection(
                 title="Agenda",
