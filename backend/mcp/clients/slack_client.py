@@ -76,14 +76,28 @@ class SlackMCPClient(BaseMCPClient):
         try:
             response = await self.http_client.get(
                 "https://slack.com/api/conversations.list",
-                params={"types": "public_channel,private_channel,im"}  # Added 'im' for DMs
+                params={
+                    "types": "public_channel,private_channel,im",
+                    "exclude_archived": "true"
+                }
             )
             data = response.json()
 
             if not data.get("ok"):
                 raise MCPClientError(f"Failed to get channels: {data.get('error')}")
 
-            return [ch["id"] for ch in data.get("channels", [])]
+            # Only include channels where bot is a member OR DM channels
+            channels = []
+            for ch in data.get("channels", []):
+                # DM channels (im) are always accessible
+                if ch.get("is_im", False):
+                    channels.append(ch["id"])
+                # For regular channels, only include if bot is a member
+                elif ch.get("is_member", False):
+                    channels.append(ch["id"])
+
+            self.logger.info(f"Found {len(channels)} accessible Slack channels/DMs")
+            return channels
 
         except Exception as e:
             self.logger.error(f"Error getting channels: {str(e)}")
@@ -113,7 +127,10 @@ class SlackMCPClient(BaseMCPClient):
             data = response.json()
 
             if not data.get("ok"):
-                self.logger.warning(f"Failed to fetch from {channel_id}: {data.get('error')}")
+                error = data.get('error')
+                # Silently skip "not_in_channel" errors - these are expected
+                if error != "not_in_channel":
+                    self.logger.warning(f"Failed to fetch from {channel_id}: {error}")
                 return []
 
             # Get channel info
