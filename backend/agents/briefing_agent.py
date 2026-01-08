@@ -102,42 +102,42 @@ class BriefingAgent:
 
         sections = []
 
-        # NEW SECTIONS - Priority 1-6
+        # PRIORITY ORDERED SECTIONS (1=highest at top, 11=lowest at bottom)
 
-        # 1. Critical Items (Priority 1)
-        critical_items_section = await self._create_critical_items_section(collected_data, target_date)
-        if critical_items_section:
-            sections.append(critical_items_section)
-
-        # 2. New Requests (Priority 2)
-        new_requests_section = await self._create_new_requests_section(collected_data, target_date)
-        if new_requests_section:
-            sections.append(new_requests_section)
-
-        # 3. Local Weather (Priority 3)
+        # 1. Local Weather (Priority 1)
         if collected_data.weather:
             weather_section = await self._create_weather_section(collected_data.weather, target_date)
             if weather_section:
                 sections.append(weather_section)
 
-        # 4. Competitor News (Priority 4)
+        # 2. Critical Items (Priority 2)
+        critical_items_section = await self._create_critical_items_section(collected_data, target_date)
+        if critical_items_section:
+            sections.append(critical_items_section)
+
+        # 3. New Requests (Priority 3)
+        new_requests_section = await self._create_new_requests_section(collected_data, target_date)
+        if new_requests_section:
+            sections.append(new_requests_section)
+
+        # 4. Competitor News (Priority 5)
         if collected_data.news_articles:
             competitor_news_section = await self._create_competitor_news_section(collected_data, target_date)
             if competitor_news_section:
                 sections.append(competitor_news_section)
 
-        # 5. AI News (Priority 5)
+        # 5. AI News (Priority 6)
         if collected_data.news_articles:
             ai_news_section = await self._create_ai_news_section(collected_data, target_date)
             if ai_news_section:
                 sections.append(ai_news_section)
 
-        # 6. Agenda (Priority 6)
+        # 6. Agenda (Priority 7)
         agenda_section = await self._create_agenda_section(collected_data, target_date)
         if agenda_section:
             sections.append(agenda_section)
 
-        # 7. Action Items - Calendar Conflicts (Priority 7)
+        # 7. Action Items - Calendar Conflicts (Priority 8)
         if collected_data.calendar_events:
             conflicts_section = await self._create_calendar_conflicts_section(
                 collected_data.calendar_events, target_date
@@ -145,7 +145,7 @@ class BriefingAgent:
             if conflicts_section:
                 sections.append(conflicts_section)
 
-        # 8. Slack Summary (Priority 8)
+        # 8. Slack Summary (Priority 9)
         if collected_data.slack_messages:
             slack_section = await self._create_slack_section(
                 collected_data.slack_messages, target_date
@@ -153,13 +153,13 @@ class BriefingAgent:
             if slack_section:
                 sections.append(slack_section)
 
-        # 9. Email Summary (Priority 9)
+        # 9. Email Summary (Priority 10)
         if collected_data.emails:
             email_section = await self._create_email_section(collected_data.emails, target_date)
             if email_section:
                 sections.append(email_section)
 
-        # 10. Call Summary (Priority 10)
+        # 10. Call Summary (Priority 11)
         if collected_data.gong_calls:
             gong_section = await self._create_gong_section(collected_data.gong_calls, target_date)
             if gong_section:
@@ -258,7 +258,7 @@ Focus on actionable items. Max 1200 tokens."""
             return BriefingSection(
                 title="Email Summary",
                 content=content,
-                priority=9,
+                priority=10,
                 source_count=1,
                 metadata={
                     "total_emails": total_emails,
@@ -402,7 +402,7 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             return BriefingSection(
                 title="Slack Summary",
                 content=content,
-                priority=8,
+                priority=9,
                 source_count=1,
                 metadata={
                     "total_messages": len(messages),
@@ -495,7 +495,7 @@ Max 2500 tokens. Be concise and actionable."""
             return BriefingSection(
                 title="Call Summary",
                 content=content,
-                priority=10,
+                priority=11,
                 source_count=1,
                 metadata={
                     "total_calls": len(calls),
@@ -710,7 +710,7 @@ Maximum 2 sentences total. Be extremely concise."""
             return BriefingSection(
                 title="Local Weather",
                 content=content,
-                priority=3,
+                priority=1,  # Highest priority - user wants weather at top
                 source_count=1,
                 metadata={"location": location_name, "temperature": weather.current_temperature},
             )
@@ -861,7 +861,7 @@ Only include items that are actual actionable deadlines, not general reminders."
             return BriefingSection(
                 title="Critical Items",
                 content=content,
-                priority=1,  # Highest priority
+                priority=2,  # Second after weather
                 source_count=len(set([item['source'] for item in critical_items])),
                 metadata={"total_items": len(critical_items)},
             )
@@ -959,7 +959,7 @@ Keep it concise, focus on actionable requests."""
             return BriefingSection(
                 title="New Requests",
                 content=content,
-                priority=2,
+                priority=3,
                 source_count=len(set([req['source'] for req in new_requests])),
                 metadata={"total_requests": len(new_requests)},
             )
@@ -973,7 +973,7 @@ Keep it concise, focus on actionable requests."""
         collected_data: Any,
         target_date: date
     ) -> Optional[BriefingSection]:
-        """Create simple time-ordered agenda from calendar events"""
+        """Create compact time-ordered agenda from calendar events"""
         try:
             events = []
             if hasattr(collected_data, 'calendar_events') and collected_data.calendar_events:
@@ -988,18 +988,48 @@ Keep it concise, focus on actionable requests."""
             # Sort by start time
             events.sort(key=lambda e: e.start_time)
 
-            # Format as simple time + title list
+            # Format as: <time> <title> <organizer> <agenda>
             agenda_lines = []
             for event in events:
                 time_str = event.start_time.strftime("%I:%M %p").lstrip("0")  # Remove leading zero
-                agenda_lines.append(f"{time_str}  {event.title}")
+
+                # Get organizer (extract name from email if present)
+                organizer = ""
+                if hasattr(event, 'organizer') and event.organizer:
+                    # Extract name before @ if email format
+                    organizer_email = event.organizer
+                    if '@' in organizer_email:
+                        organizer = organizer_email.split('@')[0].replace('.', ' ').title()
+                    else:
+                        organizer = organizer_email
+                    organizer = f"({organizer})"
+
+                # Get agenda/description if available
+                agenda = ""
+                if hasattr(event, 'description') and event.description:
+                    # Take first line or first 80 chars of description
+                    desc = event.description.strip().split('\n')[0]
+                    if len(desc) > 80:
+                        desc = desc[:77] + "..."
+                    if desc:
+                        agenda = f" - {desc}"
+
+                # Build line: time + title + organizer + agenda
+                title = event.summary if hasattr(event, 'summary') else event.title
+                line = f"{time_str}  {title}"
+                if organizer:
+                    line += f" {organizer}"
+                if agenda:
+                    line += agenda
+
+                agenda_lines.append(line)
 
             content = "\n".join(agenda_lines)
 
             return BriefingSection(
                 title="Agenda",
                 content=content,
-                priority=6,
+                priority=7,  # Updated from 6 to make room for Weather at top
                 source_count=1,
                 metadata={"total_events": len(events)},
             )
@@ -1074,7 +1104,7 @@ Keep it concise. Max 800 tokens."""
             return BriefingSection(
                 title="AI News",
                 content=content,
-                priority=5,
+                priority=6,
                 source_count=1,
                 metadata={"total_articles": len(ai_articles)},
             )
@@ -1149,7 +1179,7 @@ Highlight competitive intelligence relevant to Port's positioning. Max 800 token
             return BriefingSection(
                 title="Competitor News",
                 content=content,
-                priority=4,
+                priority=5,
                 source_count=1,
                 metadata={"total_articles": len(competitor_articles)},
             )
@@ -1208,7 +1238,7 @@ Return in markdown format."""
             return BriefingSection(
                 title="Action Items",
                 content=content,
-                priority=7,
+                priority=8,
                 source_count=1,
                 metadata={
                     "total_conflicts": analysis["total_conflicts"],
