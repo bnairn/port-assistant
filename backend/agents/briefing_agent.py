@@ -102,7 +102,7 @@ class BriefingAgent:
 
         sections = []
 
-        # PRIORITY ORDERED SECTIONS (1=highest at top, 11=lowest at bottom)
+        # PRIORITY ORDERED SECTIONS (1=highest at top, 7=lowest at bottom)
 
         # 1. Local Weather (Priority 1)
         if collected_data.weather:
@@ -110,12 +110,24 @@ class BriefingAgent:
             if weather_section:
                 sections.append(weather_section)
 
-        # 2. Agenda with conflicts (Priority 2) - What's happening today
+        # 2. AI News (Priority 2) - Industry AI headlines
+        if collected_data.news_articles:
+            ai_news_section = await self._create_ai_news_section(collected_data, target_date)
+            if ai_news_section:
+                sections.append(ai_news_section)
+
+        # 3. Competitor News (Priority 3) - IDP and competitor headlines
+        if collected_data.news_articles:
+            competitor_news_section = await self._create_competitor_news_section(collected_data, target_date)
+            if competitor_news_section:
+                sections.append(competitor_news_section)
+
+        # 4. Agenda with conflicts (Priority 4) - What's happening today
         agenda_section = await self._create_agenda_section(collected_data, target_date)
         if agenda_section:
             sections.append(agenda_section)
 
-        # 3. Slack Summary (Priority 3) - Critical messages needing attention
+        # 5. Slack Summary (Priority 5) - Critical messages needing attention
         if collected_data.slack_messages:
             slack_section = await self._create_slack_section(
                 collected_data.slack_messages, target_date
@@ -123,23 +135,11 @@ class BriefingAgent:
             if slack_section:
                 sections.append(slack_section)
 
-        # 4. Email Summary (Priority 4) - Overnight emails and meeting invites
+        # 6. Email Summary (Priority 6) - Overnight emails and meeting invites
         if collected_data.emails:
             email_section = await self._create_email_section(collected_data.emails, target_date)
             if email_section:
                 sections.append(email_section)
-
-        # 5. AI News (Priority 5) - Industry AI headlines
-        if collected_data.news_articles:
-            ai_news_section = await self._create_ai_news_section(collected_data, target_date)
-            if ai_news_section:
-                sections.append(ai_news_section)
-
-        # 6. Competitor News (Priority 6) - IDP and competitor headlines
-        if collected_data.news_articles:
-            competitor_news_section = await self._create_competitor_news_section(collected_data, target_date)
-            if competitor_news_section:
-                sections.append(competitor_news_section)
 
         # 7. New Customer Calls (Priority 7) - Customer insights
         if collected_data.gong_calls:
@@ -147,37 +147,11 @@ class BriefingAgent:
             if gong_section:
                 sections.append(gong_section)
 
-        # Critical Items and New Requests sections removed - no longer needed
-        # critical_items_section = await self._create_critical_items_section(collected_data, target_date)
-        # new_requests_section = await self._create_new_requests_section(collected_data, target_date)
-
-        # REMAINING SECTIONS - Keep existing priorities for now
-
-        if collected_data.calendar_events:
-            calendar_section = await self._create_calendar_section(
-                collected_data.calendar_events, target_date
-            )
-            if calendar_section:
-                sections.append(calendar_section)
-
-        if collected_data.monday_items:
-            monday_section = await self._create_monday_section(
-                collected_data.monday_items, target_date
-            )
-            if monday_section:
-                sections.append(monday_section)
-
-        if collected_data.notion_pages:
-            notion_section = await self._create_notion_section(
-                collected_data.notion_pages, target_date
-            )
-            if notion_section:
-                sections.append(notion_section)
-
-        if collected_data.miro_boards:
-            miro_section = await self._create_miro_section(collected_data.miro_boards, target_date)
-            if miro_section:
-                sections.append(miro_section)
+        # REMOVED SECTIONS:
+        # - Calendar Overview (redundant with Agenda)
+        # - Project Updates (Monday.com - not needed right now)
+        # - Notion integration (not needed)
+        # - Miro boards (keeping for now but can remove if needed)
 
         # Sort sections by priority (ascending - lower number = higher priority, 1 is highest)
         sections.sort(key=lambda s: s.priority)
@@ -228,9 +202,9 @@ Format the briefing as:
 - [List each new meeting invite with organizer and meeting topic]
 
 **Other Key Emails**:
-[Brief summary of important non-meeting emails - action items, requests, key updates]
+[Brief summary of important non-meeting emails - requests, key updates, notifications]
 
-Focus on actionable items. Max 1200 tokens."""
+Keep it concise and focused. Max 1200 tokens."""
 
         try:
             response = self.client.messages.create(
@@ -244,7 +218,7 @@ Focus on actionable items. Max 1200 tokens."""
             return BriefingSection(
                 title="Email Summary",
                 content=content,
-                priority=4,
+                priority=6,
                 source_count=1,
                 metadata={
                     "total_emails": total_emails,
@@ -388,7 +362,7 @@ Be very concise. Focus only on actionable items. Max 1000 tokens."""
             return BriefingSection(
                 title="Slack Summary",
                 content=content,
-                priority=3,
+                priority=5,
                 source_count=1,
                 metadata={
                     "total_messages": len(messages),
@@ -1061,7 +1035,7 @@ Keep it concise, focus on actionable requests."""
             return BriefingSection(
                 title="Agenda",
                 content=content,
-                priority=2,
+                priority=4,
                 source_count=1,
                 metadata={"total_events": len(events)},
             )
@@ -1136,7 +1110,7 @@ Keep it concise. Max 800 tokens."""
             return BriefingSection(
                 title="AI News",
                 content=content,
-                priority=5,
+                priority=2,
                 source_count=1,
                 metadata={"total_articles": len(ai_articles)},
             )
@@ -1155,6 +1129,7 @@ Keep it concise. Max 800 tokens."""
             competitor_keywords = [
                 "backstage", "spotify backstage", "cortex", "cortex.io",
                 "opslevel", "roadie", "roadie.io", "configure8",
+                "dx", "harness", "harness.io",
                 "internal developer portal", "idp", "developer portal",
                 "service catalog", "platform engineering", "developer experience"
             ]
@@ -1192,7 +1167,7 @@ For each relevant article, format as:
 - **[Headline](URL)** - One sentence summary focusing on competitive implications
 
 Focus on:
-- Backstage, Cortex, Opslevel, Roadie, Configure8 announcements
+- Backstage, Cortex, Opslevel, Roadie, Configure8, DX, Harness announcements
 - Internal developer portal (IDP) market trends
 - Platform engineering best practices
 - Developer experience innovations
@@ -1211,7 +1186,7 @@ Highlight competitive intelligence relevant to Port's positioning. Max 800 token
             return BriefingSection(
                 title="Competitor News",
                 content=content,
-                priority=6,
+                priority=3,
                 source_count=1,
                 metadata={"total_articles": len(competitor_articles)},
             )
