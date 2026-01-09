@@ -127,13 +127,13 @@ class BriefingAgent:
         if agenda_section:
             sections.append(agenda_section)
 
-        # 5. Slack Summary (Priority 5) - Critical messages needing attention
-        if collected_data.slack_messages:
-            slack_section = await self._create_slack_section(
-                collected_data.slack_messages, target_date
-            )
-            if slack_section:
-                sections.append(slack_section)
+        # 5. Slack Summary (Priority 8) - Critical messages needing attention
+        # Always create Slack section, even with 0 messages
+        slack_section = await self._create_slack_section(
+            collected_data.slack_messages if collected_data.slack_messages else [], target_date
+        )
+        if slack_section:
+            sections.append(slack_section)
 
         # 6. Email Summary (Priority 6) - Overnight emails and meeting invites
         if collected_data.emails:
@@ -285,8 +285,20 @@ Return a markdown-formatted section."""
         self, messages: List[Any], target_date: date
     ) -> Optional[BriefingSection]:
         """Create enhanced briefing section from Slack messages with DMs/mentions/VIP focus"""
+        # Always return a section, even with 0 messages
         if not messages:
-            return None
+            return BriefingSection(
+                title="Slack Summary",
+                content="No Slack activity detected.\n\n**Note:** The Slack bot may need additional permissions or channel access to detect @mentions and DMs across your workspace.",
+                priority=8,
+                metadata={
+                    "total_messages": 0,
+                    "unanswered_dms": 0,
+                    "mentions": 0
+                },
+                processing_time=0.0,
+                sources=["slack"]
+            )
 
         # Categorize messages
         unanswered_dms = []
