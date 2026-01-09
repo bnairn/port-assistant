@@ -153,11 +153,11 @@ class WeatherData(BaseModel):
 
 
 class NewsArticle(BaseModel):
-    """News article data from Tavily"""
+    """News article data from NewsAPI"""
     title: str = Field(..., description="Article title")
     url: str = Field(..., description="Article URL")
     content: str = Field(..., description="Article content/summary")
-    score: float = Field(..., description="Relevance score")
+    source: str = Field(default="", description="Article source/publication")
     published_date: Optional[str] = Field(None, description="Published date")
 
 
@@ -175,6 +175,8 @@ class CollectedData(BaseModel):
     miro_boards: List[MiroData] = Field(default_factory=list)
     weather: Optional[WeatherData] = None
     news_articles: List[NewsArticle] = Field(default_factory=list)
+    ai_news_articles: List[NewsArticle] = Field(default_factory=list)
+    competitor_news_articles: List[NewsArticle] = Field(default_factory=list)
 
     def get_total_items(self) -> int:
         """Get total number of items collected across all sources"""
@@ -188,6 +190,8 @@ class CollectedData(BaseModel):
             + len(self.miro_boards)
             + (1 if self.weather else 0)
             + len(self.news_articles)
+            + len(self.ai_news_articles)
+            + len(self.competitor_news_articles)
         )
 
     def get_source_counts(self) -> Dict[str, int]:

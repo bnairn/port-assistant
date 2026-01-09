@@ -172,7 +172,11 @@ class DataCollector:
             return 1  # Weather is a single data point
         elif source_name == "news":
             if isinstance(data, dict):
-                return len(data.get("news_articles", []))
+                return (
+                    len(data.get("news_articles", []))
+                    + len(data.get("ai_news_articles", []))
+                    + len(data.get("competitor_news_articles", []))
+                )
         elif isinstance(data, list):
             return len(data)
         return 0
@@ -214,17 +218,42 @@ class DataCollector:
                 collected_data.weather = weather_data
             elif source_name == "news" and isinstance(data, dict):
                 from models.data_sources import NewsArticle
-                # Convert news articles to NewsArticle models
+
+                # Convert general tech news articles
                 articles = data.get("news_articles", [])
                 for article in articles:
                     news_article = NewsArticle(
                         title=article.get("title", ""),
                         url=article.get("url", ""),
                         content=article.get("content", ""),
-                        score=article.get("score", 0),
+                        source=article.get("source", ""),
                         published_date=article.get("published_date")
                     )
                     collected_data.news_articles.append(news_article)
+
+                # Convert AI news articles
+                ai_articles = data.get("ai_news_articles", [])
+                for article in ai_articles:
+                    news_article = NewsArticle(
+                        title=article.get("title", ""),
+                        url=article.get("url", ""),
+                        content=article.get("content", ""),
+                        source=article.get("source", ""),
+                        published_date=article.get("published_date")
+                    )
+                    collected_data.ai_news_articles.append(news_article)
+
+                # Convert competitor news articles
+                competitor_articles = data.get("competitor_news_articles", [])
+                for article in competitor_articles:
+                    news_article = NewsArticle(
+                        title=article.get("title", ""),
+                        url=article.get("url", ""),
+                        content=article.get("content", ""),
+                        source=article.get("source", ""),
+                        published_date=article.get("published_date")
+                    )
+                    collected_data.competitor_news_articles.append(news_article)
 
         except Exception as e:
             self.logger.warning(f"Failed to add data from {source_name}: {str(e)}")

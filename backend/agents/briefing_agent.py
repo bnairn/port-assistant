@@ -1049,26 +1049,12 @@ Keep it concise, focus on actionable requests."""
         collected_data: Any,
         target_date: date
     ) -> Optional[BriefingSection]:
-        """Create section for AI/ML news with keyword filtering"""
+        """Create section for AI/ML news from NewsAPI"""
         try:
-            ai_keywords = [
-                "ai", "artificial intelligence", "llm", "large language model",
-                "gpt", "claude", "chatgpt", "gemini", "machine learning", "ml",
-                "deep learning", "neural network", "generative ai", "genai",
-                "transformer", "openai", "anthropic", "midjourney", "stable diffusion"
-            ]
-
+            # Get AI news articles directly from collected data
             ai_articles = []
-            if hasattr(collected_data, 'news_articles') and collected_data.news_articles:
-                for article in collected_data.news_articles:
-                    # Check title and content for AI keywords
-                    title_lower = article.title.lower() if article.title else ""
-                    content_lower = article.content.lower() if article.content else ""
-                    combined_text = f"{title_lower} {content_lower}"
-
-                    # Check if any AI keyword is present
-                    if any(keyword in combined_text for keyword in ai_keywords):
-                        ai_articles.append(article)
+            if hasattr(collected_data, 'ai_news_articles') and collected_data.ai_news_articles:
+                ai_articles = collected_data.ai_news_articles
 
             if not ai_articles:
                 return None
@@ -1124,27 +1110,12 @@ Keep it concise. Max 800 tokens."""
         collected_data: Any,
         target_date: date
     ) -> Optional[BriefingSection]:
-        """Create section for Port competitor news with keyword filtering"""
+        """Create section for Port competitor news from NewsAPI"""
         try:
-            competitor_keywords = [
-                "backstage", "spotify backstage", "cortex", "cortex.io",
-                "opslevel", "roadie", "roadie.io", "configure8",
-                "dx", "harness", "harness.io",
-                "internal developer portal", "idp", "developer portal",
-                "service catalog", "platform engineering", "developer experience"
-            ]
-
+            # Get competitor news articles directly from collected data
             competitor_articles = []
-            if hasattr(collected_data, 'news_articles') and collected_data.news_articles:
-                for article in collected_data.news_articles:
-                    # Check title and content for competitor keywords
-                    title_lower = article.title.lower() if article.title else ""
-                    content_lower = article.content.lower() if article.content else ""
-                    combined_text = f"{title_lower} {content_lower}"
-
-                    # Check if any competitor keyword is present
-                    if any(keyword in combined_text for keyword in competitor_keywords):
-                        competitor_articles.append(article)
+            if hasattr(collected_data, 'competitor_news_articles') and collected_data.competitor_news_articles:
+                competitor_articles = collected_data.competitor_news_articles
 
             if not competitor_articles:
                 return None

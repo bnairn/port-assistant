@@ -97,49 +97,71 @@ def markdown_to_html(markdown: str) -> str:
     html = re.sub(r'^\- (.*?)$', r'<li>\1</li>', html, flags=re.MULTILINE)
     html = re.sub(r'(<li>.*?</li>)', r'<ul>\1</ul>', html, flags=re.DOTALL)
 
-    # Horizontal rules
-    html = html.replace('---', '<hr style="border: 1px solid #ddd; margin: 20px 0;">')
+    # Remove horizontal rules entirely
+    html = html.replace('---', '')
 
-    # Wrap in HTML template
+    # Wrap in HTML template with compact styling and page numbers
     html_template = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
         <style>
+            @media print {{
+                @page {{
+                    margin: 0.5in;
+                    @bottom-center {{
+                        content: "Page " counter(page) " of " counter(pages);
+                    }}
+                }}
+            }}
+
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                line-height: 1.6;
+                line-height: 1.35;
                 color: #333;
                 max-width: 800px;
                 margin: 0 auto;
-                padding: 20px;
+                padding: 15px;
                 background-color: #f5f5f5;
+                font-size: 13px;
             }}
             .container {{
                 background-color: white;
-                padding: 30px;
+                padding: 20px 25px;
                 border-radius: 8px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }}
             h1 {{
                 color: #2c3e50;
-                border-bottom: 3px solid #3498db;
-                padding-bottom: 10px;
+                border-bottom: 2px solid #3498db;
+                padding-bottom: 6px;
+                margin-bottom: 12px;
+                font-size: 22px;
             }}
             h2 {{
                 color: #2c3e50;
-                margin-top: 30px;
+                margin-top: 15px;
+                margin-bottom: 6px;
+                font-size: 16px;
+                border-bottom: 1px solid #e0e0e0;
+                padding-bottom: 3px;
+            }}
+            h3 {{
+                font-size: 14px;
+                margin-top: 10px;
+                margin-bottom: 4px;
             }}
             p {{
-                margin: 10px 0;
+                margin: 6px 0;
             }}
             ul {{
-                margin: 10px 0;
+                margin: 6px 0;
                 padding-left: 20px;
             }}
             li {{
-                margin: 5px 0;
+                margin: 3px 0;
+                line-height: 1.4;
             }}
             a {{
                 color: #3498db;
@@ -150,14 +172,28 @@ def markdown_to_html(markdown: str) -> str:
             }}
             .metadata {{
                 color: #7f8c8d;
-                font-size: 0.9em;
-                margin: 10px 0;
+                font-size: 0.85em;
+                margin: 4px 0 8px 0;
+            }}
+            .page-footer {{
+                text-align: center;
+                color: #7f8c8d;
+                font-size: 11px;
+                margin-top: 20px;
+                padding-top: 10px;
+                border-top: 1px solid #e0e0e0;
+            }}
+            strong {{
+                font-weight: 600;
             }}
         </style>
     </head>
     <body>
         <div class="container">
             {html}
+            <div class="page-footer">
+                Daily Briefing | Generated with Port Assistant
+            </div>
         </div>
     </body>
     </html>

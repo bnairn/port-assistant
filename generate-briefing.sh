@@ -34,19 +34,15 @@ try:
     data = json.load(sys.stdin)
     briefing = data['briefing']
 
-    # Write markdown file
+    # Write markdown file (compact layout)
     with open(OUTPUT_FILE, 'w') as f:
         f.write(f\"# Daily Briefing - {briefing['date']}\n\n\")
-        f.write(f\"**Generated at:** {briefing['generated_at']}\n\n\")
-        f.write(f\"**Processing time:** {briefing['processing_time_seconds']:.2f} seconds\n\n\")
-        f.write(\"---\n\n\")
 
         # Sort sections by priority (lowest number = highest priority, 1 is first)
         sections = sorted(briefing['sections'], key=lambda x: x['priority'])
 
         for section in sections:
             f.write(f\"## {section['title']}\n\n\")
-            f.write(f\"**Priority:** {section['priority']} | **Sources:** {section['source_count']}\n\n\")
 
             if 'metadata' in section and section['metadata']:
                 metadata = section['metadata']
@@ -92,7 +88,7 @@ try:
                     f.write(\" | \".join(metadata_lines) + \"\n\n\")
 
             f.write(section['content'])
-            f.write(\"\n\n---\n\n\")
+            f.write(\"\n\n\")
 
         # Data sources status
         f.write(\"## 🔌 Data Sources\n\n\")

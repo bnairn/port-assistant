@@ -35,11 +35,8 @@ try:
     data = json.load(sys.stdin)
     briefing = data['briefing']
 
-    # Build markdown
+    # Build markdown (compact layout)
     md = f\"# Daily Briefing - {briefing['date']}\\n\\n\"
-    md += f\"**Generated at:** {briefing['generated_at']}\\n\\n\"
-    md += f\"**Processing time:** {briefing['processing_time_seconds']:.2f} seconds\\n\\n\"
-    md += \"---\\n\\n\"
 
     # Sort sections by priority
     sections = sorted(briefing['sections'], key=lambda x: x['priority'])
@@ -74,7 +71,7 @@ try:
             if metadata_lines:
                 md += ' | '.join(metadata_lines) + \"\\n\\n\"
 
-        md += section['content'] + \"\\n\\n---\\n\\n\"
+        md += section['content'] + \"\\n\\n\"
 
     # Data sources
     md += \"## 🔌 Data Sources\\n\\n\"
@@ -97,7 +94,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Send email using Python
+# Send email using Python (with venv)
+source backend/venv/bin/activate
 python3 -c "
 import sys
 sys.path.insert(0, 'backend')

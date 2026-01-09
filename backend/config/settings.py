@@ -55,7 +55,12 @@ class Settings(BaseSettings):
     OPENWEATHER_API_KEY: Optional[str] = None
 
     # News (optional)
-    TAVILY_API_KEY: Optional[str] = None
+    NEWSAPI_API_KEY: Optional[str] = None
+
+    # Email (optional - for sending daily briefings)
+    SENDER_EMAIL: Optional[str] = None
+    SENDER_APP_PASSWORD: Optional[str] = None
+    RECIPIENT_EMAIL: Optional[str] = None
 
 
 settings = Settings()
