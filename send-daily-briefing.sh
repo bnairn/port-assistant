@@ -94,6 +94,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Extract email credentials from .env
+SENDER_EMAIL=$(grep "^SENDER_EMAIL=" backend/.env | cut -d '=' -f2)
+SENDER_PASSWORD=$(grep "^SENDER_APP_PASSWORD=" backend/.env | cut -d '=' -f2 | head -1)
+
 # Send email using Python (with venv)
 source backend/venv/bin/activate
 python3 -c "
@@ -104,13 +108,23 @@ from datetime import datetime
 
 markdown = '''${MARKDOWN}'''
 recipient = '${RECIPIENT_EMAIL}'
+sender = '${SENDER_EMAIL}'
+password = '${SENDER_PASSWORD}'
 
 if not recipient or recipient == '':
     print('❌ RECIPIENT_EMAIL not set. Add it to backend/.env')
     sys.exit(1)
 
+if not sender or sender == '':
+    print('❌ SENDER_EMAIL not set. Add it to backend/.env')
+    sys.exit(1)
+
+if not password or password == '':
+    print('❌ SENDER_APP_PASSWORD not set. Add it to backend/.env')
+    sys.exit(1)
+
 subject = f'Daily Briefing - {datetime.now().strftime(\"%B %d, %Y\")}'
-success = send_briefing_email(markdown, recipient, subject)
+success = send_briefing_email(markdown, recipient, subject, sender, password)
 
 if not success:
     sys.exit(1)
